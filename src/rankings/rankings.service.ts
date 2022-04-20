@@ -7,7 +7,9 @@ import { RpcException } from '@nestjs/microservices';
 import { ClientProxySmartRanking } from '../proxyrmq/client-proxy'
 import { Categoria } from './interfaces/categoria.interface';
 import { EventoNome } from './evento-nome-enum'
-
+import { RankingResponse } from './interfaces/ranking-response.interface';
+import * as momentTimezone from 'moment-timezone'
+import { Desafio } from './interfaces/desafio.interface'
 
 @Injectable()
 export class RankingsService {
@@ -20,6 +22,8 @@ export class RankingsService {
     private readonly logger = new Logger(RankingsService.name)
 
     private clientAdminBackend = this.clientProxySmartRanking.getClientProxyAdminBackendInstance()
+
+    private clientDesafios = this.clientProxySmartRanking.getClientProxyDesafiosInstance()
 
 
     async processarPartida(idPartida: string, partida: Partida): Promise<void> {
@@ -70,6 +74,37 @@ export class RankingsService {
 
         } catch (error) {
             this.logger.error(`error: ${error}`)
+            throw new RpcException(error.message)
+        }
+    }
+
+    async consultarRankings(idCategoria: any, dataRef: string): Promise<RankingResponse[] | RankingResponse>{
+
+        try{
+
+            this.logger.log(`idCategoria: ${idCategoria} dataRef: ${dataRef}`)
+
+            if(!dataRef) {
+                dataRef = momentTimezone().tz("America/Sao_Paulo").format('YYYY-MM-DD')
+                this.logger.log(`dataRef: ${dataRef}`)
+            }
+
+            const registrosRanking = await this.desafioModel.find()
+            .where('categoria')
+            .equals(idCategoria)
+            .exec()
+
+            this.logger.log(`registrosRanking: ${JSON.stringify(registrosRanking)}`)
+
+            const desafios: Desafio[] = await this.clientDesafios.send('consultar-desafios-realizados', {
+                idCategoria: idCategoria, dataRef: dataRef
+            }).toPromise()
+
+            
+            return
+
+        } catch (error){
+            this.logger.error(`error: ${JSON.stringify(error.message)}`)
             throw new RpcException(error.message)
         }
     }
