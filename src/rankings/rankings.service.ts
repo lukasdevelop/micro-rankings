@@ -7,9 +7,10 @@ import { RpcException } from '@nestjs/microservices';
 import { ClientProxySmartRanking } from '../proxyrmq/client-proxy'
 import { Categoria } from './interfaces/categoria.interface';
 import { EventoNome } from './evento-nome-enum'
-import { RankingResponse } from './interfaces/ranking-response.interface';
+import { RankingResponse, Historico } from './interfaces/ranking-response.interface';
 import * as momentTimezone from 'moment-timezone'
 import { Desafio } from './interfaces/desafio.interface'
+import * as _ from 'lodash'
 
 @Injectable()
 export class RankingsService {
@@ -100,8 +101,48 @@ export class RankingsService {
                 idCategoria: idCategoria, dataRef: dataRef
             }).toPromise()
 
-            
-            return
+            _.remove(registrosRanking, function(item) {
+                return desafios.filter(desafio => desafio._id == item.desafio).length == 0
+            })
+
+            this.logger.log(`registrosRanking: ${JSON.stringify(registrosRanking)}`)
+
+            const resultado = _(registrosRanking)
+                                .groupBy('jogador')
+                                .map((items, key) => ({
+                                    'jogador': key,
+                                    'historico': _.countBy(items, 'evento'),
+                                    'pontos': _.sumBy(items, 'pontos')
+                                }))
+                                .value()
+
+            const resultadoOrdenado = _.orderBy(resultado, 'pontos', 'desc')
+            this.logger.log(`resultado: ${JSON.stringify(resultadoOrdenado )}`)
+
+            const rankingResponseList: RankingResponse[] = []
+
+            resultadoOrdenado.map(function(item, index) {
+                const rankingResponse: RankingResponse = {}
+
+                rankingResponse.jogador = item.jogador
+                rankingResponse.posicao = index + 1
+                rankingResponse.pontuacao = item.pontos
+
+                const historico: Historico = {}
+
+                historico.vitorias = item.historico.VITORIA ? item.historico.VITORIA : 0
+                historico.derrotas = item.historico.DERROTA ? item.historico.DERROTA : 0
+                rankingResponse.historicoPartidas = historico
+
+                rankingResponseList.push(rankingResponse)
+
+                return rankingResponseList
+
+
+            })
+
+
+            return 
 
         } catch (error){
             this.logger.error(`error: ${JSON.stringify(error.message)}`)
